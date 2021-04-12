@@ -7,7 +7,7 @@ public class TaskExecutor {
 
         private final HashSet<Task> edgesFrom = new HashSet<>();
         private final HashSet<Task> edgesTo = new HashSet<>();
-        private int waitTasks = 0;
+        private int waitTasks = 0; // can be used in future for waiting in thread
 
         public NodeExplanation(Collection<Task> edges, boolean to) {
             if (to) {
@@ -66,10 +66,10 @@ public class TaskExecutor {
 
     }
 
-    private HashMap<Task, NodeExplanation> nodes;
-    private HashSet<Task> inDFS;
-    private HashSet<Task> visited;
-    private ArrayList<Task> plan;
+    private final HashMap<Task, NodeExplanation> NODES = new HashMap<>();
+    private final HashSet<Task> IN_DFS = new HashSet<>();
+    private final HashSet<Task> VISITED = new HashSet<>();
+    private final ArrayList<Task> PLAN = new ArrayList<>();
     private final static BiFunction<NodeExplanation, NodeExplanation, NodeExplanation> MERGING_EDGES = (a, b) -> {
         b.addEdgesFrom(a.getEdgesFrom());
         b.addEdgesTo(a.getEdgesTo());
@@ -77,14 +77,15 @@ public class TaskExecutor {
     };
 
     private void clearAll() {
-        nodes.clear();
-        inDFS.clear();
-        visited.clear();
+        NODES.clear();
+        IN_DFS.clear();
+        VISITED.clear();
+        PLAN.clear();
     }
 
     private void showGraphs() {
         System.out.println("Graph");
-        show(nodes);
+        show(NODES);
     }
 
     private void show(HashMap<Task, NodeExplanation> graph) {
@@ -104,13 +105,13 @@ public class TaskExecutor {
     }
 
     void continueDFS(Task task, Task parent) {
-        if (!visited.contains(task)) {
-            visited.add(task);
-            inDFS.add(task);
+        if (!VISITED.contains(task)) {
+            VISITED.add(task);
+            IN_DFS.add(task);
             dfs(task);
-            inDFS.remove(task);
+            IN_DFS.remove(task);
         } else {
-            if (inDFS.contains(task)) {
+            if (IN_DFS.contains(task)) {
                 clearAll();
                 throw new IllegalArgumentException("Given dependencies have circle, so can't be resolves. Circle has edge: " + task + " <-> " + parent);
             }
@@ -118,54 +119,30 @@ public class TaskExecutor {
     }
 
     private void dfs(Task task) {
-        nodes.merge(task, new NodeExplanation(task.dependencies(), true), MERGING_EDGES);
+        NODES.merge(task, new NodeExplanation(task.dependencies(), true), MERGING_EDGES);
         for (Task dependence : task.dependencies()) {
-            nodes.merge(dependence, new NodeExplanation(task, false), MERGING_EDGES);
+            NODES.merge(dependence, new NodeExplanation(task, false), MERGING_EDGES);
             continueDFS(dependence, task);
         }
+        PLAN.add(task);
     }
 
-    private void fillGraphs(final Collection<Main.EasyTask> tasks) {
-        visited = new HashSet<>();
-        inDFS = new HashSet<>();
+    private void fillGraphAndPlan(final Collection<Main.EasyTask> tasks) {
         for (Task task : tasks) {
             continueDFS(task, null);
         }
     }
 
-    private void addToPlan(Map.Entry<Task, NodeExplanation> node) {
-        plan.add(node.getKey());
-        node.getValue().decrease();
-        for (Task task : node.getValue().getEdgesFrom()) {
-            NodeExplanation nodeFrom = nodes.get(task);
-            nodeFrom.decrease();
-        }
-    }
-
     public void execute(Collection<Main.EasyTask> tasks) {
-        nodes = new HashMap<>();
-        fillGraphs(tasks);
-        plan = new ArrayList<>(nodes.size());
+        clearAll();
+        fillGraphAndPlan(tasks); // add graph of all dependencies and all tasks. Fill plan which is reversed topsort.
         showGraphs();
-        boolean notAddedAll = true;
-        while (notAddedAll) {
-            notAddedAll = false;
-            for (Map.Entry<Task, NodeExplanation> entry : nodes.entrySet()) {
-                int waiting = entry.getValue().getWaitTasks();
-                if (waiting == 0) {
-                    addToPlan(entry);
-                } else {
-                    if (waiting > 0) {
-                        notAddedAll = true;
-                    }
-                }
-            }
-        }
         System.out.println("PLan");
-        for (Task task : plan) {
+        for (Task task : PLAN) {
             System.out.print(task + " ");
             task.execute();
         }
+        System.out.println();
     }
 
 }
